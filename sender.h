@@ -25,6 +25,9 @@ typedef struct {
     /*  TODO: 
         Message structure for wrapper
     */
+    int passtype;
+    char message[1024];
+    long timestamp;
 } message_t;
 
 void send(message_t message, mailbox_t* mailbox_ptr);
