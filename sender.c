@@ -39,26 +39,28 @@ int main(int argc,char* argv[]){
     mailbox.flag=atoi(argv[1]);
     FILE *file = fopen(argv[2], "r");
     if(mailbox.flag==2){
-    empty = sem_open(SEM_EMPTY, O_CREAT, 0666, 1);
-    full = sem_open(SEM_FULL, O_CREAT, 0666, 0);
-    mutex = sem_open(SEM_MUTEX, O_CREAT, 0666, 1);
-    int shm_fd = shm_open(SHM_NAME, O_RDWR, 0666);
-    ftruncate(shm_fd, SHM_SIZE); 
-    mailbox.storage.shm_addr = mmap(0, SHM_SIZE, PROT_WRITE, MAP_SHARED, shm_fd, 0);
-    while(fgets(message.content, message.content, file)){
-        clock_gettime(CLOCK_MONOTONIC_RAW, &start);
-        send(message, &mailbox);
-        clock_gettime(CLOCK_MONOTONIC_RAW, &end);
-        time_taken = (end.tv_sec - start.tv_sec)+(end.tv_nsec - start.tv_nsec) * 1e-9;
-        printf("%5f",time_taken);
-    }
-    perrpr("End of inout file! exit!");
-    fclose(file);
-    munmap(shm_ptr, SHM_SIZE);
-    close(shm_fd);
-    sem_close(empty);
-    sem_close(full);
-    sem_close(mutex);
+        empty = sem_open(SEM_EMPTY, O_CREAT, 0666, 1);
+        full = sem_open(SEM_FULL, O_CREAT, 0666, 0);
+        mutex = sem_open(SEM_MUTEX, O_CREAT, 0666, 1);
+        int shm_fd = shm_open(SHM_NAME, O_RDWR, 0666);
+        ftruncate(shm_fd, SHM_SIZE); 
+        mailbox.storage.shm_addr = mmap(0, SHM_SIZE, PROT_WRITE, MAP_SHARED, shm_fd, 0);
+        shm_ptr = mailbox.storage.shm_addr;
+        while(fgets(message.content, message.content, file)){
+            clock_gettime(CLOCK_MONOTONIC_RAW, &start);
+            send(message, &mailbox);
+            clock_gettime(CLOCK_MONOTONIC_RAW, &end);
+            message.timestamp = (end.tv_sec - start.tv_sec)+(end.tv_nsec - start.tv_nsec) * 1e-9;
+            time_taken+=message.timestamp;
+            printf("%5f",time_taken);
+        }
+        perrpr("End of inout file! exit!");
+        fclose(file);
+        munmap(shm_ptr, SHM_SIZE);
+        close(shm_fd);
+        sem_close(empty);
+        sem_close(full);
+        sem_close(mutex);
     }
     return 0;
 }

@@ -32,7 +32,7 @@ typedef struct {
         Message structure for wrapper
     */
     char content[1024];
-    long timestamp;
+    double timestamp;
 } message_t;
 
 void send(message_t message, mailbox_t* mailbox_ptr);
