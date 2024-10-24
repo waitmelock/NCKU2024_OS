@@ -12,6 +12,12 @@
 #include <semaphore.h>
 #include <time.h>
 
+#define SHM_NAME "/shm_share"
+#define SHM_SIZE 1024
+#define SEM_EMPTY "/empty"
+#define SEM_FULL "/full"
+#define SEM_MUTEX "/mutex"
+
 typedef struct {
     int flag;      // 1 for message passing, 2 for shared memory
     union{
