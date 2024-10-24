@@ -16,10 +16,27 @@ mqd_t mq;
 char *shm_ptr;
 void send(message_t message, mailbox_t* mailbox_ptr){    
     if(mailbox_ptr->flag==1){// message passing
-        sem_wait(mutex_send);
-        mq=mq_open("msgq",O_CREAT|O_RDWR,0666,NULL);
-        mq_send(mq,message.content,strlen(message.content),0);
-        sem_post(mutex_rece);
+        key_t key = ftok(".", 65);
+        int msgid = msgget(key, 0666 | IPC_CREAT);
+    
+        struct msg_buffer {
+            long msg_type;
+            char msg_text[SHM_SIZE];
+        } message_buf;
+        
+        // 設定訊息
+        message_buf.msg_type = 1;
+        char *newline = strchr(message.content, '\n');
+        if (newline) *newline = '\0';
+        
+        strcpy(message_buf.msg_text, message.content);
+        message_buf.msg_text[SHM_SIZE - 1] = '\0';
+        
+        // 發送訊息
+        if(msgsnd(msgid, &message_buf, sizeof(message_buf.msg_text), 0) == -1) {
+            perror("msgsnd failed");
+            exit(1);
+        }
     }
     if(mailbox_ptr->flag==2){// share memory
         // sem_wait(empty);
@@ -51,31 +68,30 @@ int main(int argc,char* argv[]){
     char* result;
     if(mailbox.flag==1){// message passing
         printf("\033[34mMessage Passing\033[0m\n");
-        mutex_send = sem_open(SEM_MUTEX_send, O_CREAT|O_RDWR, 0666, 1);
-        mutex_rece = sem_open(SEM_MUTEX_rece, O_CREAT|O_RDWR, 0666, 0);
-        
-        while((result=fgets(message.content,SHM_SIZE, file))!=NULL){
-            clock_gettime(CLOCK_MONOTONIC_RAW, &start);
+        key_t key = ftok(".", 65);
+        int msgid = msgget(key, 0666 | IPC_CREAT);
+        // 發送開始訊號
+        strcpy(message.content, "START\n");
+        send(message, &mailbox);
+    
+        char* result;
+        while((result = fgets(message.content, SHM_SIZE, file)) != NULL) {
+            clock_gettime(CLOCK_MONOTONIC, &start);
             send(message, &mailbox);
-            clock_gettime(CLOCK_MONOTONIC_RAW, &end);
-            message.timestamp = (end.tv_sec - start.tv_sec)+(end.tv_nsec - start.tv_nsec) * 1e-9;
-            time_taken+=message.timestamp;
+            clock_gettime(CLOCK_MONOTONIC, &end);
+            
+            message.timestamp = (end.tv_sec - start.tv_sec) + 
+                            (end.tv_nsec - start.tv_nsec) * 1e-9;
+            time_taken += message.timestamp;
             printf("\033[34mSending message:\033[0m %s",message.content);
         }
-        strcpy(message.content,"EOF");
-        clock_gettime(CLOCK_MONOTONIC_RAW, &start);
-        send(message, &mailbox);
-        clock_gettime(CLOCK_MONOTONIC_RAW, &end);
-        message.timestamp = (end.tv_sec - start.tv_sec)+(end.tv_nsec - start.tv_nsec) * 1e-9;
-        time_taken+=message.timestamp;
-        printf("\n\033[31mEnd of input file! exit!\033[0m\n");
-        printf("Total time taken in sending msg: %6f s\n",time_taken);
-
-        //free space
-        fclose(file);
-        mq_close(mq);
-        sem_close(mutex_send);
-        sem_close(mutex_rece);
+    
+    // 發送結束訊號
+    strcpy(message.content, "EOF\n");
+    send(message, &mailbox);
+    printf("\n\033[31mEnd of input file! exit!\033[0m\n");
+    printf("Total time taken in sending msg: %6f s\n", time_taken);
+    fclose(file);
 
     }
     if(mailbox.flag==2){

@@ -16,10 +16,20 @@ char *shm_ptr;
 */
 void receive(message_t* message_ptr, mailbox_t* mailbox_ptr){
     if(mailbox_ptr->flag==1){// message passing
-        sem_wait(mutex_rece);
-        mq=mq_open("msgq",O_CREAT|O_RDWR,0666,NULL);
-        mq_receive(mq,message_ptr->content, 1024,NULL);
-        sem_post(mutex_send);
+        key_t key = ftok(".", 65);
+        int msgid = msgget(key, 0666);
+        
+        // 定義訊息結構
+        struct msg_buffer {
+            long msg_type;
+            char msg_text[SHM_SIZE];
+        } message;
+        // 接收訊息
+        ssize_t receive_size = msgrcv(msgid, &message, sizeof(message.msg_text), 1, 0);
+    
+        // 複製訊息內容並加上換行符
+        snprintf(message_ptr->content, SHM_SIZE, "%s\n", message.msg_text);
+        
     }
     if(mailbox_ptr->flag==2){// share memory
         sem_wait(mutex_rece);
@@ -40,24 +50,33 @@ int main(int argc,char* argv[]){
     mailbox.flag=atoi(argv[1]);
     if(mailbox.flag==1){
         printf("\033[34mMessage Passing\033[0m\n");
-        mutex_send = sem_open(SEM_MUTEX_send, O_RDWR, 0666);
-        mutex_rece = sem_open(SEM_MUTEX_rece, O_RDWR, 0666);
-        //mq=mq_open("msgq",O_CREAT|O_RDWR,0666,NULL);
-        while(1){
-            clock_gettime(CLOCK_MONOTONIC_RAW, &start);
-            receive(&message, &mailbox);
-            clock_gettime(CLOCK_MONOTONIC_RAW, &end);
-            message.timestamp = (end.tv_sec - start.tv_sec)+(end.tv_nsec - start.tv_nsec) * 1e-9;
-            time_taken+=message.timestamp;
-            if(!strcmp(message.content,"EOF")){
-                break;
-            }
-            printf("\033[34mReceiving message:\033[0m %s",message.content); 
+        receive(&message, &mailbox);
+    
+    while(1) {
+        clock_gettime(CLOCK_MONOTONIC_RAW, &start);
+        receive(&message, &mailbox);
+        clock_gettime(CLOCK_MONOTONIC_RAW, &end);
+        
+        message.timestamp = (end.tv_sec - start.tv_sec) + 
+                          (end.tv_nsec - start.tv_nsec) * 1e-9;
+        time_taken += message.timestamp;
+        
+        if(strcmp(message.content, "EOF\n") == 0) {
+            break;
         }
-        printf("\n\033[31mSender exit!\033[0m\n");
-        printf("Total time taken in receiving msg: %6f s\n",time_taken);
-        sem_close(mutex_send);
-        sem_close(mutex_rece);
+        
+        printf("\033[34mReceiving message:\033[0m %s",message.content);
+    }
+    printf("\033[31mSender exit!\033[0m\n");
+
+    printf("Total time taken in receiving msg: %6f s\n", time_taken);
+    
+    // 清理 message queue
+    key_t key = ftok(".", 65);
+    int msgid = msgget(key, 0666);
+    if(msgid != -1) {
+        msgctl(msgid, IPC_RMID, NULL);
+    }
     }
     if(mailbox.flag==2){
         // empty = sem_open(SEM_EMPTY, O_RDWR, 0666, 1);
