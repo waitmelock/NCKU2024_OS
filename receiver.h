@@ -15,9 +15,8 @@
 
 #define SHM_NAME "/shm_share"
 #define SHM_SIZE 1024
-#define SEM_EMPTY "/empty"
-#define SEM_FULL "/full"
-#define SEM_MUTEX "/mutex"
+#define SEM_MUTEX_rece "/mutex_rece"
+#define SEM_MUTEX_send "/mutex_send"
 
 typedef struct {
     int flag;      // 1 for message passing, 2 for shared memory
