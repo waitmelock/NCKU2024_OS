@@ -42,7 +42,7 @@ int main(int argc,char* argv[]){
         empty = sem_open(SEM_EMPTY, O_CREAT, 0666, 1);
         full = sem_open(SEM_FULL, O_CREAT, 0666, 0);
         mutex = sem_open(SEM_MUTEX, O_CREAT, 0666, 1);
-        int shm_fd = shm_open(SHM_NAME, O_RDWR, 0666);
+        int shm_fd = sem_open(SHM_NAME, O_RDWR, 0666);
         ftruncate(shm_fd, SHM_SIZE); 
         mailbox.storage.shm_addr = mmap(0, SHM_SIZE, PROT_WRITE, MAP_SHARED, shm_fd, 0);
         shm_ptr = mailbox.storage.shm_addr;
@@ -54,7 +54,7 @@ int main(int argc,char* argv[]){
             time_taken+=message.timestamp;
             printf("%5f",time_taken);
         }
-        perrpr("End of inout file! exit!");
+        perror("End of inout file! exit!");
         fclose(file);
         munmap(shm_ptr, SHM_SIZE);
         close(shm_fd);
