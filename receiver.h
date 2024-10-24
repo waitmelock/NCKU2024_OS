@@ -9,6 +9,7 @@
 #include <sys/ipc.h>
 #include <sys/msg.h>
 #include <sys/shm.h>
+#include <sys/mman.h>
 #include <semaphore.h>
 #include <time.h>
 

@@ -46,15 +46,19 @@ int main(int argc,char* argv[]){
         ftruncate(shm_fd, SHM_SIZE); 
         mailbox.storage.shm_addr = mmap(0, SHM_SIZE, PROT_WRITE, MAP_SHARED, shm_fd, 0);
         shm_ptr = mailbox.storage.shm_addr;
+        printf("Message Passing\n");
         while(fgets(message.content, message.content, file)){
             clock_gettime(CLOCK_MONOTONIC_RAW, &start);
             send(message, &mailbox);
             clock_gettime(CLOCK_MONOTONIC_RAW, &end);
             message.timestamp = (end.tv_sec - start.tv_sec)+(end.tv_nsec - start.tv_nsec) * 1e-9;
             time_taken+=message.timestamp;
-            printf("%5f",time_taken);
+            printf("Sending message: %s",message.content);
         }
-        perror("End of inout file! exit!");
+        perror("End of input file! exit!\n");
+        printf("Total time taken in sending msg: %6f s\n",time_taken);
+
+        //free space
         fclose(file);
         munmap(shm_ptr, SHM_SIZE);
         close(shm_fd);

@@ -11,6 +11,7 @@
 #include <sys/shm.h>
 #include <semaphore.h>
 #include <time.h>
+#include <sys/mman.h>
 
 #define SHM_NAME "/shm_share"
 #define SHM_SIZE 1024
