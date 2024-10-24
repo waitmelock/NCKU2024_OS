@@ -12,11 +12,15 @@ message_t message;
 // sem_t *full;
 sem_t *mutex_send;
 sem_t *mutex_rece;
+mqd_t mq;
 char *shm_ptr;
 void send(message_t message, mailbox_t* mailbox_ptr){    
-    // if(mailbox_ptr->flag==1){// message passing
-
-    // }
+    if(mailbox_ptr->flag==1){// message passing
+        sem_wait(mutex_send);
+        mq=mq_open("msgq",O_CREAT|O_RDWR,0666,NULL);
+        mq_send(mq,message.content,strlen(message.content),0);
+        sem_post(mutex_rece);
+    }
     if(mailbox_ptr->flag==2){// share memory
         // sem_wait(empty);
         sem_wait(mutex_send);
@@ -43,7 +47,37 @@ int main(int argc,char* argv[]){
     }
     mailbox.flag=atoi(argv[1]);
     FILE *file = fopen(argv[2], "r");
-        // printf("%d",mailbox.flag);
+    // printf("%d",mailbox.flag);
+    char* result;
+    if(mailbox.flag==1){// message passing
+        printf("\033[34mMessage Passing\033[0m\n");
+        mutex_send = sem_open(SEM_MUTEX_send, O_CREAT|O_RDWR, 0666, 1);
+        mutex_rece = sem_open(SEM_MUTEX_rece, O_CREAT|O_RDWR, 0666, 0);
+        
+        while((result=fgets(message.content,SHM_SIZE, file))!=NULL){
+            clock_gettime(CLOCK_MONOTONIC_RAW, &start);
+            send(message, &mailbox);
+            clock_gettime(CLOCK_MONOTONIC_RAW, &end);
+            message.timestamp = (end.tv_sec - start.tv_sec)+(end.tv_nsec - start.tv_nsec) * 1e-9;
+            time_taken+=message.timestamp;
+            printf("\033[34mSending message:\033[0m %s",message.content);
+        }
+        strcpy(message.content,"EOF");
+        clock_gettime(CLOCK_MONOTONIC_RAW, &start);
+        send(message, &mailbox);
+        clock_gettime(CLOCK_MONOTONIC_RAW, &end);
+        message.timestamp = (end.tv_sec - start.tv_sec)+(end.tv_nsec - start.tv_nsec) * 1e-9;
+        time_taken+=message.timestamp;
+        printf("\n\033[31mEnd of input file! exit!\033[0m\n");
+        printf("Total time taken in sending msg: %6f s\n",time_taken);
+
+        //free space
+        fclose(file);
+        mq_close(mq);
+        sem_close(mutex_send);
+        sem_close(mutex_rece);
+
+    }
     if(mailbox.flag==2){
         printf("\033[34mMessage Passing\033[0m\n");  
         mutex_send = sem_open(SEM_MUTEX_send, O_CREAT|O_RDWR, 0666, 1);
@@ -58,7 +92,7 @@ int main(int argc,char* argv[]){
         shm_ptr = mailbox.storage.shm_addr;
         // int checkout=fgets(message.content,SHM_SIZE, file);
         // printf("%d\n",checkout);
-        char* result;
+        
         while((result=fgets(message.content,SHM_SIZE, file))!=NULL){
             clock_gettime(CLOCK_MONOTONIC_RAW, &start);
             send(message, &mailbox);
@@ -67,7 +101,7 @@ int main(int argc,char* argv[]){
             time_taken+=message.timestamp;
             printf("\033[34mSending message:\033[0m %s",message.content);
         }
-        strcpy(message.content,"");
+        strcpy(message.content,"EOF");
         clock_gettime(CLOCK_MONOTONIC_RAW, &start);
         send(message, &mailbox);
         clock_gettime(CLOCK_MONOTONIC_RAW, &end);

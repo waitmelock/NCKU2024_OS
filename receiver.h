@@ -12,6 +12,7 @@
 #include <sys/mman.h>
 #include <semaphore.h>
 #include <time.h>
+#include<mqueue.h>
 
 #define SHM_NAME "/shm_share"
 #define SHM_SIZE 1024

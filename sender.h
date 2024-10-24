@@ -12,7 +12,7 @@
 #include <semaphore.h>
 #include <time.h>
 #include <sys/mman.h>
-
+#include<mqueue.h>
 // #define _POSIX_C_SOURCE 199309L
 #define SHM_NAME "/shm_share"
 #define SHM_SIZE 1024
