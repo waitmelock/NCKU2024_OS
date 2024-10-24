@@ -4,8 +4,8 @@ double time_taken;
 
 mailbox_t mailbox;
 message_t message;
-sem_t *empty;
-sem_t *full;
+// sem_t *empty;
+// sem_t *full;
 sem_t *mutex;
 char *shm_ptr;
 
@@ -18,11 +18,9 @@ void receive(message_t* message_ptr, mailbox_t* mailbox_ptr){
 
     // }
     if(mailbox_ptr->flag==2){// share memory
-        sem_wait(empty);
         sem_wait(mutex);
-        snprintf(mailbox_ptr->storage.shm_addr,SHM_SIZE,"%s\n",message.content);
+        snprintf(message_ptr->content,SHM_SIZE,"%s\n",mailbox_ptr->storage.shm_addr);
         sem_post(mutex);
-        sem_post(full);
     }
 }
 
@@ -37,18 +35,18 @@ int main(int argc,char* argv[]){
     */
     mailbox.flag=atoi(argv[1]);
     if(mailbox.flag==2){
-        empty = sem_open(SEM_EMPTY, O_CREAT, 0666, 1);
-        full = sem_open(SEM_FULL, O_CREAT, 0666, 0);
-        mutex = sem_open(SEM_MUTEX, O_CREAT, 0666, 1);
-        int shm_fd = sem_open(SHM_NAME, O_RDWR, 0666);
+        // empty = sem_open(SEM_EMPTY, O_RDWR, 0666, 1);
+        // full = sem_open(SEM_FULL, O_RDWR, 0666, 0);
+        mutex = sem_open(SEM_MUTEX, O_RDWR, 0666, 1);
+        int shm_fd = shm_open(SHM_NAME, O_RDWR, 0666);
         ftruncate(shm_fd, SHM_SIZE); 
-        mailbox.storage.shm_addr = mmap(0, SHM_SIZE, PROT_WRITE, MAP_SHARED, shm_fd, 0);
+        mailbox.storage.shm_addr = mmap(0, SHM_SIZE, PROT_READ, MAP_SHARED, shm_fd, 0);
         shm_ptr = mailbox.storage.shm_addr;
         printf("Message Passing\n");
         while(strcmp(message.content,"EOF")){
-            clock_gettime(CLOCK_MONOTONIC_RAW, &start);
-            send(message, &mailbox);
-            clock_gettime(CLOCK_MONOTONIC_RAW, &end);
+            //clock_gettime(CLOCK_MONOTONIC_RAW, &start);
+            receive(&message, &mailbox);
+            //clock_gettime(CLOCK_MONOTONIC_RAW, &end);
             message.timestamp = (end.tv_sec - start.tv_sec)+(end.tv_nsec - start.tv_nsec) * 1e-9;
             time_taken+=message.timestamp;
             printf("Receiving message: %s",message.content);
@@ -59,8 +57,8 @@ int main(int argc,char* argv[]){
 
         munmap(shm_ptr, SHM_SIZE);
         close(shm_fd);
-        sem_close(empty);
-        sem_close(full);
+        // sem_close(empty);
+        // sem_close(full);
         sem_close(mutex);
     }
     return 0;
