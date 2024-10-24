@@ -38,17 +38,20 @@ void send(message_t message, mailbox_t* mailbox_ptr){
 int main(int argc,char* argv[]){
     mailbox.flag=atoi(argv[1]);
     FILE *file = fopen(argv[2], "r");
+        printf("%d",mailbox.flag);
     if(mailbox.flag==2){
         // empty = sem_open(SEM_EMPTY, O_CREAT|O_RDWR, 0666, 1);
         // full = sem_open(SEM_FULL, O_CREAT|O_RDWR, 0666, 0);
+        printf("Message Passing");  
         mutex = sem_open(SEM_MUTEX, O_CREAT|O_RDWR, 0666, 1);
         int shm_fd = shm_open(SHM_NAME, O_CREAT|O_RDWR, 0666);
         ftruncate(shm_fd, SHM_SIZE); 
         mailbox.storage.shm_addr = mmap(0, SHM_SIZE, PROT_WRITE, MAP_SHARED, shm_fd, 0);
         shm_ptr = mailbox.storage.shm_addr;
-        printf("Message Passing\n");  
-        printf("line for check");
-        while(fgets(message.content,SHM_SIZE, file)){
+        // int checkout=fgets(message.content,SHM_SIZE, file);
+        // printf("%d\n",checkout);
+        char* result;
+        while((result=fgets(message.content,SHM_SIZE, file))!=NULL){
             //clock_gettime(CLOCK_MONOTONIC, &start);
             send(message, &mailbox);
             //clock_gettime(CLOCK_MONOTONIC, &end);
