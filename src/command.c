@@ -96,7 +96,7 @@ void test_cmd_struct(struct cmd *cmd)
 	int pipe_count = 0;
 	printf("============ COMMAND INFO ============\n");
 	while (temp != NULL) {
-		printf("pipe %d: ", pipe_count);
+		printf("cmd_node %d: ", pipe_count);
 		for (int i = 0; i < temp->length; ++i) {
 			printf("%s ", temp->args[i]);
 		}
@@ -113,7 +113,7 @@ void test_cmd_struct(struct cmd *cmd)
  * @param temp cmd_node structure
  */
 void test_pipe_struct(struct cmd_node *temp){
-	printf("============ PIPE INFO ============\n");
+	printf("============ CMD_NODE INFO ============\n");
 	
 	for (int i = 0; i < temp->length; ++i) {
 		printf("temp->args[%d] :%s \n",i, temp->args[i]);
@@ -122,5 +122,5 @@ void test_pipe_struct(struct cmd_node *temp){
 	printf("out-file: %s\n", temp->out_file ? temp->out_file : "none");
 	printf(" in: %d\n", temp->in );
 	printf("out: %d\n", temp->out);
-	printf("============ PIPE INFO END ============\n");
+	printf("============ CMD_NODE END ============\n");
 }
