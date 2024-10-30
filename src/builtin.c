@@ -55,6 +55,13 @@ int help(char **args)
 // ======================= requirement 2.1 =======================
 int cd(char **args)
 {
+	DIR *dir=opendir(args[1]);
+	if(!dir){
+	 	perror("dir not exist");
+	}
+	closedir(dir);
+	if (chdir(args[1]) != 0) //成功返回0，失败返回-1
+		perror("cd");
 	return 1;
 }
 // ===============================================================

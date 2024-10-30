@@ -19,8 +19,46 @@
  * @param p cmd_node structure
  * 
  */
-void redirection(struct cmd_node *p){
-	
+void redirection(struct cmd_node *p) {
+    // 處理輸入重定向
+    if (p->in_file != NULL) {
+        int in_fd = open(p->in_file, O_RDONLY);
+        if (in_fd == -1) {
+            perror("open in_file failed");
+            exit(EXIT_FAILURE);
+        }
+        if (dup2(in_fd, STDIN_FILENO) == -1) {
+            perror("dup2 in_file failed");
+            exit(EXIT_FAILURE);
+        }
+        close(in_fd);
+    } else if (p->in != -1) {
+        if (dup2(p->in, STDIN_FILENO) == -1) {
+            perror("dup2 in failed");
+            exit(EXIT_FAILURE);
+        }
+        close(p->in);
+    }
+
+    // 處理輸出重定向
+    if (p->out_file != NULL) {
+        int out_fd = open(p->out_file, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+        if (out_fd == -1) {
+            perror("open out_file failed");
+            exit(EXIT_FAILURE);
+        }
+        if (dup2(out_fd, STDOUT_FILENO) == -1) {
+            perror("dup2 out_file failed");
+            exit(EXIT_FAILURE);
+        }
+        close(out_fd);
+    } else if (p->out != -1) {
+        if (dup2(p->out, STDOUT_FILENO) == -1) {
+            perror("dup2 out failed");
+            exit(EXIT_FAILURE);
+        }
+        close(p->out);
+    }
 }
 // ===============================================================
 
@@ -37,7 +75,29 @@ void redirection(struct cmd_node *p){
  */
 int spawn_proc(struct cmd_node *p)
 {
-  	return 1;
+	pid_t pid = fork();
+    int status;
+
+    if (pid == -1) {
+        // fork 失敗
+        perror("fork failed");
+        return -1;
+    } else if (pid == 0) {// 子進程
+        if (execvp(p->args[0], p->args) == -1) {
+            perror("execvp failed");
+            _exit(EXIT_FAILURE); // 使用 _exit 以確保子進程立即退出
+        }
+    } else {// 父進程
+        do {
+            pid_t wpid = waitpid(pid, &status, WUNTRACED);
+            if (wpid == -1) {
+                perror("waitpid failed");
+                return -1;
+            }
+        } while (!WIFEXITED(status) && !WIFSIGNALED(status));
+    }
+
+    return status;
 }
 // ===============================================================
 
@@ -53,7 +113,71 @@ int spawn_proc(struct cmd_node *p)
  */
 int fork_cmd_node(struct cmd *cmd)
 {
-	return 1;
+    struct cmd_node *current = cmd->head;
+    int num_cmds = 0;
+    for (;current != NULL;num_cmds++) {
+        current = current->next;
+    }
+
+    int pipefds[2 * (num_cmds - 1)];
+	//給後面的指令開讀寫通道
+    for (int i = 0; i < num_cmds - 1; i++) {
+        if (pipe(pipefds + i * 2) == -1) {
+            perror("pipe failed");
+            return -1;
+        }
+    }
+    current = cmd->head;
+    for (int i=0;current != NULL;i++) {
+        if (i > 0) {
+            current->in = pipefds[(i - 1) * 2];
+        }
+        if (current->next != NULL) {
+            current->out = pipefds[i * 2 + 1];
+        } else {
+            current->out = -1;
+        }
+
+        pid_t pid = fork();
+        if (pid == -1) {
+            perror("fork failed");
+            return -1;
+        } else if (pid == 0) {
+            if (current->in != -1) {
+                if (dup2(current->in, STDIN_FILENO) == -1) {
+                    perror("dup2 in failed");
+                    _exit(EXIT_FAILURE);
+                }
+                close(current->in);
+            }
+            if (current->out != -1) {
+                if (dup2(current->out, STDOUT_FILENO) == -1) {
+                    perror("dup2 out failed");
+                    _exit(EXIT_FAILURE);
+                }
+                close(current->out);
+            }
+            for (int j = 0; j < 2 * (num_cmds - 1); j++) {
+                close(pipefds[j]);
+            }
+            if (spawn_proc(current) == -1) {
+                _exit(EXIT_FAILURE);
+            }
+            _exit(EXIT_SUCCESS);
+        }
+
+        current = current->next;
+    }
+
+    for (int j = 0; j < 2 * (num_cmds - 1); j++) {
+        close(pipefds[j]);
+    }
+
+    for (int j = 0; j < num_cmds; j++) {
+        wait(NULL);
+    }
+
+    return 0;
 }
 // ===============================================================
 
