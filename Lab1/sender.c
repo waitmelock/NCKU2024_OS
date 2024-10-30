@@ -38,11 +38,10 @@ void send(message_t message, mailbox_t* mailbox_ptr){
             exit(1);
         }
     }
+
     if(mailbox_ptr->flag==2){// share memory
         // sem_wait(empty);
-        sem_wait(mutex_send);
         snprintf(mailbox_ptr->storage.shm_addr,SHM_SIZE,"%s",message.content);
-        sem_post(mutex_rece);
         // sem_post(full);
     }
 }
@@ -106,13 +105,13 @@ int main(int argc,char* argv[]){
         ftruncate(shm_fd, SHM_SIZE); 
         mailbox.storage.shm_addr = mmap(0, SHM_SIZE, PROT_WRITE, MAP_SHARED, shm_fd, 0);
         shm_ptr = mailbox.storage.shm_addr;
-        // int checkout=fgets(message.content,SHM_SIZE, file);
-        // printf("%d\n",checkout);
-        
+    
         while((result=fgets(message.content,SHM_SIZE, file))!=NULL){
+            sem_wait(mutex_send);
             clock_gettime(CLOCK_MONOTONIC_RAW, &start);
             send(message, &mailbox);
             clock_gettime(CLOCK_MONOTONIC_RAW, &end);
+            sem_post(mutex_rece);
             message.timestamp = (end.tv_sec - start.tv_sec)+(end.tv_nsec - start.tv_nsec) * 1e-9;
             time_taken+=message.timestamp;
             printf("\033[34mSending message:\033[0m %s",message.content);
@@ -134,4 +133,4 @@ int main(int argc,char* argv[]){
         sem_close(mutex_rece);
     }
     return 0;
-}
+    }
