@@ -20,7 +20,7 @@
  * 
  */
 void redirection(struct cmd_node *p) {
-    // 處理輸入重定向
+    //處理輸入重定向
     if (p->in_file != NULL) {
         int in_fd = open(p->in_file, O_RDONLY);
         if (in_fd == -1) {
@@ -40,7 +40,7 @@ void redirection(struct cmd_node *p) {
 
     // 處理輸出重定向
     if (p->out_file != NULL) {
-        int out_fd = open(p->out_file, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+        int out_fd = open(p->out_file, O_WRONLY | O_CREAT|O_TRUNC, 0644);
         if (out_fd == -1) {
             perror("open out_file failed");
             exit(EXIT_FAILURE);
@@ -72,13 +72,14 @@ void redirection(struct cmd_node *p) {
 int spawn_proc(struct cmd_node *p)
 {
 	pid_t pid = fork();
+	pid_t wpid;
     int status;
 
     if (pid == -1) {
-        // fork 失敗
         perror("fork failed");
         return -1;
     } else if (pid == 0) {// 子進程
+		redirection(p);
         if (execvp(p->args[0], p->args) == -1) {
             perror("execvp failed");
             _exit(EXIT_FAILURE); // 使用 _exit 以確保子進程立即退出
@@ -86,13 +87,15 @@ int spawn_proc(struct cmd_node *p)
         }
     } else {// 父進程
         do {
-            pid_t wpid = waitpid(pid, &status, WUNTRACED);
+            wpid = waitpid(pid, &status, 0);
             if (wpid == -1) {
                 perror("waitpid failed");
                 return -1;
             }
+
         } while (!WIFEXITED(status) && !WIFSIGNALED(status));
     }
+
     if(strcmp(p->args[0],"exit") == 0){
         return 0;
     }
@@ -115,69 +118,120 @@ int fork_cmd_node(struct cmd *cmd)
 {
     struct cmd_node *current = cmd->head;
     int num_cmds = 0;
-    for (;current != NULL;num_cmds++) {
+    // 計算命令數量
+    for (; current != NULL; num_cmds++) {
         current = current->next;
     }
 
+    // 創建管道
     int pipefds[2 * (num_cmds - 1)];
-	//給後面的指令開讀寫通道
     for (int i = 0; i < num_cmds - 1; i++) {
         if (pipe(pipefds + i * 2) == -1) {
             perror("pipe failed");
             return -1;
         }
     }
-    current = cmd->head;
-    for (int i=0;current != NULL;i++) {
-        if (i > 0) {
-            current->in = pipefds[(i - 1) * 2];
-        }
-        if (current->next != NULL) {
-            current->out = pipefds[i * 2 + 1];
-        } else {
-            current->out = -1;
-        }
 
-        pid_t pid = fork();
-        if (pid == -1) {
+    // 存儲所有子進程的 pid
+    pid_t *pids = malloc(sizeof(pid_t) * num_cmds);
+    if (pids == NULL) {
+        perror("malloc failed");
+        return -1;
+    }
+
+    // 執行每個命令
+    current = cmd->head;
+    for (int i = 0; i < num_cmds; i++) {
+        pids[i] = fork();
+        
+        if (pids[i] == -1) {
             perror("fork failed");
+            free(pids);
             return -1;
-        } else if (pid == 0) {
-            if (current->in != -1) {
-                if (dup2(current->in, STDIN_FILENO) == -1) {
-                    perror("dup2 in failed");
+        }
+        
+        if (pids[i] == 0) {  // 子進程
+            // 設置輸入端（除了第一個命令）
+            if (i > 0) {
+                if (dup2(pipefds[(i-1) * 2], STDIN_FILENO) == -1) {
+                    perror("dup2 input failed");
                     _exit(EXIT_FAILURE);
                 }
-                close(current->in);
             }
-            if (current->out != -1) {
-                if (dup2(current->out, STDOUT_FILENO) == -1) {
-                    perror("dup2 out failed");
+            
+            // 設置輸出端（除了最後一個命令）
+            if (i < num_cmds - 1) {
+                if (dup2(pipefds[i * 2 + 1], STDOUT_FILENO) == -1) {
+                    perror("dup2 output failed");
                     _exit(EXIT_FAILURE);
                 }
-                close(current->out);
             }
+
+            // 處理文件重定向
+            if (current->in_file != NULL) {
+                int in_fd = open(current->in_file, O_RDONLY);
+                if (in_fd == -1) {
+                    perror("open input file failed");
+                    _exit(EXIT_FAILURE);
+                }
+                if (dup2(in_fd, STDIN_FILENO) == -1) {
+                    perror("dup2 input file failed");
+                    _exit(EXIT_FAILURE);
+                }
+                close(in_fd);
+            }
+            
+            if (current->out_file != NULL) {
+                int out_fd = open(current->out_file, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+                if (out_fd == -1) {
+                    perror("open output file failed");
+                    _exit(EXIT_FAILURE);
+                }
+                if (dup2(out_fd, STDOUT_FILENO) == -1) {
+                    perror("dup2 output file failed");
+                    _exit(EXIT_FAILURE);
+                }
+                close(out_fd);
+            }
+
+            // 關閉所有管道
             for (int j = 0; j < 2 * (num_cmds - 1); j++) {
                 close(pipefds[j]);
             }
-            if (spawn_proc(current) == -1) {
+
+            // 執行命令
+            if (execvp(current->args[0], current->args) == -1) {
+                perror("execvp failed");
                 _exit(EXIT_FAILURE);
             }
-            _exit(EXIT_SUCCESS);
         }
-
+        
         current = current->next;
     }
 
-    for (int j = 0; j < 2 * (num_cmds - 1); j++) {
-        close(pipefds[j]);
+    // 父進程關閉所有管道
+    for (int i = 0; i < 2 * (num_cmds - 1); i++) {
+        close(pipefds[i]);
     }
 
-    for (int j = 0; j < num_cmds; j++) {
-        wait(NULL);
+    // 等待所有子進程結束
+    int status;
+    int last_status = 1;  // 預設返回1表示成功
+    for (int i = 0; i < num_cmds; i++) {
+        waitpid(pids[i], &status, 0);
+        if (i == num_cmds - 1) {  // 保存最後一個命令的狀態
+            if (WIFEXITED(status)) {
+                if (WEXITSTATUS(status) == 0) {
+                    last_status = 1;  // 成功執行
+                } else {
+                    last_status = WEXITSTATUS(status);  // 保存錯誤狀態
+                }
+            }
+        }
     }
 
-    return 0;
+    free(pids);
+    return last_status;
 }
 // ===============================================================
 
@@ -200,7 +254,7 @@ void shell()
 			status = searchBuiltInCommand(temp);
 			if (status != -1){
 				int in = dup(STDIN_FILENO), out = dup(STDOUT_FILENO);
-				if( in == -1| out == -1)
+				if( in == -1 | out == -1)
 					perror("dup");
 				redirection(temp);
 				status = execBuiltInCommand(status,temp);

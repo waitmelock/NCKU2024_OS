@@ -60,7 +60,7 @@ int cd(char **args)
 	 	perror("dir not exist");
 	}
 	closedir(dir);
-	if (chdir(args[1]) != 0) //成功返回0，失败返回-1
+	if (chdir(args[1]) != 0) //SUCC=0，fail=-1
 		perror("cd");
 	return 1;
 }
