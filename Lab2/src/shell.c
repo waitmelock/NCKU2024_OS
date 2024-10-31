@@ -31,13 +31,11 @@ void redirection(struct cmd_node *p) {
             perror("dup2 in_file failed");
             exit(EXIT_FAILURE);
         }
-        close(in_fd);
     } else if (p->in != -1) {
         if (dup2(p->in, STDIN_FILENO) == -1) {
             perror("dup2 in failed");
             exit(EXIT_FAILURE);
         }
-        close(p->in);
     }
 
     // 處理輸出重定向
@@ -51,13 +49,11 @@ void redirection(struct cmd_node *p) {
             perror("dup2 out_file failed");
             exit(EXIT_FAILURE);
         }
-        close(out_fd);
     } else if (p->out != -1) {
         if (dup2(p->out, STDOUT_FILENO) == -1) {
             perror("dup2 out failed");
             exit(EXIT_FAILURE);
         }
-        close(p->out);
     }
 }
 // ===============================================================
@@ -86,6 +82,7 @@ int spawn_proc(struct cmd_node *p)
         if (execvp(p->args[0], p->args) == -1) {
             perror("execvp failed");
             _exit(EXIT_FAILURE); // 使用 _exit 以確保子進程立即退出
+            return 0;
         }
     } else {// 父進程
         do {
@@ -96,8 +93,11 @@ int spawn_proc(struct cmd_node *p)
             }
         } while (!WIFEXITED(status) && !WIFSIGNALED(status));
     }
+    if(strcmp(p->args[0],"exit") == 0){
+        return 0;
+    }
 
-    return status;
+    return 1;
 }
 // ===============================================================
 
@@ -200,7 +200,7 @@ void shell()
 			status = searchBuiltInCommand(temp);
 			if (status != -1){
 				int in = dup(STDIN_FILENO), out = dup(STDOUT_FILENO);
-				if( in == -1 | out == -1)
+				if( in == -1| out == -1)
 					perror("dup");
 				redirection(temp);
 				status = execBuiltInCommand(status,temp);
