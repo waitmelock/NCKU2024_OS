@@ -49,8 +49,11 @@ void *thread1(void *arg){
     /*YOUR CODE HERE*/
     for(int i=0; i<matrix_row_x; i++){
         for(int j=0; j<matrix_col_y; j++){
+            // z[i][j] = 0;
             for(int k=0; k<matrix_row_y/2; k++){
-
+                pthread_spin_lock(&lock);
+                z[i][j] += x[i][k] * y[k][j];
+                pthread_spin_unlock(&lock);
             }      
         }
     }
@@ -63,8 +66,11 @@ void *thread2(void *arg) {
     /*YOUR CODE HERE*/
     for(int i=0; i<matrix_row_x; i++){
         for(int j=0; j<matrix_col_y; j++){
+            // z[i][j] = 0;
             for(int k=matrix_row_y/2; k<matrix_row_y; k++){
-
+                pthread_spin_lock(&lock);
+                z[i][j] += x[i][k] * y[k][j];
+                pthread_spin_unlock(&lock);
             }     
         }
     } 

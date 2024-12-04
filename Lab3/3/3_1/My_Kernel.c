@@ -17,6 +17,7 @@ static ssize_t Mywrite(struct file *fileptr, const char __user *ubuf, size_t buf
 
 static ssize_t Myread(struct file *fileptr, char __user *ubuf, size_t buffer_len, loff_t *offset){
     /*Your code here*/
+    
 
     /****************/
 }
