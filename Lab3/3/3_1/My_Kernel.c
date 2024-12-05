@@ -5,7 +5,6 @@
 #include <linux/proc_fs.h>
 #include <asm/current.h>
 
-#include <stdio.h>
 #define procfs_name "Mythread_info"
 #define BUFSIZE  1024
 char buf[BUFSIZE];
@@ -16,11 +15,38 @@ static ssize_t Mywrite(struct file *fileptr, const char __user *ubuf, size_t buf
 }
 static ssize_t Myread(struct file *fileptr, char __user *ubuf, size_t buffer_len, loff_t *offset){
     /*Your code here*/
-	struct task_struct *task=current;
-	struct task_struct *thread;
-	for_each_thread(current,thread){
-		*offset+=printf("PID: %d,TID: %d,Priority: %d,State: %d\n",current->pid,thread->pid,thread->prio,thread->__state);
-	}
+    struct task_struct *task = current;
+    struct task_struct *thread;
+    int len = 0;
+    ssize_t ret;
+
+    if (*offset) {
+        return 0;
+    }
+    else{
+        for_each_thread(task, thread) {
+            if (thread == task) {
+                continue; // Skip the main thread
+            }
+            len += snprintf(buf + len, sizeof(buf) - len, "PID: %d, TID: %d, Priority: %d, State: %d\n",
+                            task->pid, thread->pid, thread->prio, thread->__state);
+        }
+    }
+
+    // Adjust length to copy based on buffer_len and remaining data
+    ret = len;
+    if (ret > buffer_len) {
+        ret = buffer_len;
+    }
+
+    if (copy_to_user(ubuf, buf, ret)) {
+        return -EFAULT;
+    }
+
+    // Update offset
+    *offset += ret;
+
+    return ret;
     /****************/
 }
 

@@ -35,13 +35,11 @@ MODULE_INFO(retpoline, "Y");
 
 static const struct modversion_info ____versions[]
 __used __section("__versions") = {
-	{ 0xf9a482f9, "msleep" },
-	{ 0xb3f7646e, "kthread_should_stop" },
-	{ 0x8142e62c, "kthread_create_on_node" },
+	{ 0x1e362ae8, "pcpu_hot" },
 	{ 0x656e4a6e, "snprintf" },
 	{ 0x88db9f48, "__check_object_size" },
 	{ 0x6b10bee1, "_copy_to_user" },
-	{ 0xf0fdf6cb, "__stack_chk_fail" },
+	{ 0x7682ba4e, "__copy_overflow" },
 	{ 0xbdfb6dbb, "__fentry__" },
 	{ 0x5b8239ca, "__x86_return_thunk" },
 	{ 0xec0bd42d, "proc_create" },
@@ -52,4 +50,4 @@ __used __section("__versions") = {
 MODULE_INFO(depends, "");
 
 
-MODULE_INFO(srcversion, "09BC7C17FD9BE6DD6820BF9");
+MODULE_INFO(srcversion, "FFD59B77CBC53198D4824B5");

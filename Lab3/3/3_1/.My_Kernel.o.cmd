@@ -1029,10 +1029,6 @@ deps_/home/vboxuser/Documents/Lab3/NCKU2024_OS/Lab3/3/3_1/My_Kernel.o := \
     $(wildcard include/config/MODULES_USE_ELF_RELA) \
   include/linux/proc_fs.h \
     $(wildcard include/config/PROC_PID_ARCH_STATUS) \
-  include/linux/kthread.h \
-  include/linux/delay.h \
-  arch/x86/include/asm/delay.h \
-  include/asm-generic/delay.h \
 
 /home/vboxuser/Documents/Lab3/NCKU2024_OS/Lab3/3/3_1/My_Kernel.o: $(deps_/home/vboxuser/Documents/Lab3/NCKU2024_OS/Lab3/3/3_1/My_Kernel.o)
 
