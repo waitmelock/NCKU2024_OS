@@ -73,13 +73,21 @@ void *thread1(void *arg){
 
     /*YOUR CODE HERE*/
     /* Hint: Write data into proc file.*/
+    FILE *proc_file = fopen("/proc/Mythread_info", "w");
+    if (proc_file == NULL) {
+        perror("Failed to open proc file");
+        return NULL;
+    }
 
-    /****************/ 
+    fprintf(proc_file, "%s\n", data);
+    fclose(proc_file);
 
-    char buffer[50]; 
-    while (fgets(buffer, sizeof(buffer), fptr4) != NULL){
+    char buffer[256];
+    while (fgets(buffer, sizeof(buffer), fptr4) != NULL) {
         printf("%s", buffer);
     }
+
+    return NULL;
 }
 
 
@@ -97,13 +105,20 @@ void *thread2(void *arg){
     
     /*YOUR CODE HERE*/
     /* Hint: Write data into proc file.*/
+    FILE *proc_file2 = fopen("/proc/Mythread_info", "w");
+        if (proc_file2 == NULL) {
+            perror("Failed to open proc file");
+        }
 
+    fprintf(proc_file2, "%s\n", data);
+    fclose(proc_file2);
     /****************/   
-
-    char buffer[50]; 
-    while (fgets(buffer, sizeof(buffer), fptr5) != NULL){
+    char buffer[256];
+    while (fgets(buffer, sizeof(buffer), fptr5) != NULL) {
         printf("%s", buffer);
-    } 
+    }
+
+    return NULL;
 }
 #endif
 
