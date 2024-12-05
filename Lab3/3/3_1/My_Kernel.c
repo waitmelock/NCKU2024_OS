@@ -16,60 +16,14 @@ static ssize_t Mywrite(struct file *fileptr, const char __user *ubuf, size_t buf
     /* Do nothing */
 	return 0;
 }
-
-struct task_struct *thread1;
-struct task_struct *thread2;
-
-static int thread_fn(void *data) {
-    while (!kthread_should_stop()) {
-        ssleep(1); // Sleep for a while
-    }
-    return 0;
-}
-
-static ssize_t Myread(struct file *fileptr, char __user *ubuf, size_t buffer_len, loff_t *offset) {
-    char info[256];
-    int len = 0;
-    ssize_t ret;
-    struct task_struct *task;
-
-    // Create two threads
-    thread1 = kthread_create(thread_fn, NULL, "thread1");
-    thread2 = kthread_create(thread_fn, NULL, "thread2");
-
-    if (IS_ERR(thread1) || IS_ERR(thread2)) {
-        pr_info("Failed to create threads\n");
-        return -EFAULT;
-    }
-
-    // Gather information about the threads
-    // for_each_thread(task, thread) {
-    //     len += snprintf(info + len, sizeof(info) - len, "PID: %d, TID: %d, Priority: %d, State: %d\n",
-    //                     task->pid, thread->pid, thread->prio, thread->__state);
-    // }
-    len += snprintf(info + len, sizeof(info) - len, "Thread 1: PID: %d, State: %d\n", thread1->pid, thread1->__state);
-    len += snprintf(info + len, sizeof(info) - len, "Thread 2: PID: %d, State: %d\n", thread2->pid, thread2->__state);
-
-    // Check if offset is beyond the length of the string
-    if (*offset >= len) {
-        return 0;
-    }
-
-    // Adjust length to copy based on buffer_len and remaining data
-    ret = len - *offset;
-    if (ret > buffer_len) {
-        ret = buffer_len;
-    }
-
-    // Copy data to user space
-    if (copy_to_user(ubuf, info + *offset, ret)) {
-        return -EFAULT;
-    }
-
-    // Update offset
-    *offset += ret;
-
-    return ret;
+static ssize_t Myread(struct file *fileptr, char __user *ubuf, size_t buffer_len, loff_t *offset){
+    /*Your code here*/
+	struct task_struct *task=current;
+	struct task_struct *thread;
+	for_each_thread(current,thread){
+		printf("PID: %d,TID: %d,Priority: %d,State: %d\n",current->pid,thread->pid,thread->prio,thread->__state);
+	}
+    /****************/
 }
 
 static struct proc_ops Myops = {
