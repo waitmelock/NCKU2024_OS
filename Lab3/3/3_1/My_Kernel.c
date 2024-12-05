@@ -19,7 +19,7 @@ static ssize_t Myread(struct file *fileptr, char __user *ubuf, size_t buffer_len
 	struct task_struct *task=current;
 	struct task_struct *thread;
 	for_each_thread(current,thread){
-		printf("PID: %d,TID: %d,Priority: %d,State: %d\n",current->pid,thread->pid,thread->prio,thread->__state);
+		*offset+=printf("PID: %d,TID: %d,Priority: %d,State: %d\n",current->pid,thread->pid,thread->prio,thread->__state);
 	}
     /****************/
 }
