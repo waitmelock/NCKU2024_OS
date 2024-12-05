@@ -5,9 +5,7 @@
 #include <linux/proc_fs.h>
 #include <asm/current.h>
 
-#include <linux/uaccess.h>
-#include <linux/kthread.h>
-#include <linux/delay.h>
+#include <stdio.h>
 #define procfs_name "Mythread_info"
 #define BUFSIZE  1024
 char buf[BUFSIZE];
