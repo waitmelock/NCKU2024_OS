@@ -40,22 +40,14 @@ static ssize_t Myread(struct file *fileptr, char __user *ubuf, size_t buffer_len
         return 0;
     }
     else{
-        for_each_thread(task, thread) {
-            if (thread == task) {
-                continue; // Skip the main thread
-            }
-            procfs_buffer_size += snprintf(buf + procfs_buffer_size, sizeof(buf) - procfs_buffer_size, "PID: %d, TID: %d, time: %llu\n",
-                            task->tgid, task->pid, task->utime/100/1000);
-        }
+        procfs_buffer_size += snprintf(buf + procfs_buffer_size, sizeof(buf) - procfs_buffer_size, "PID: %d, TID: %d, time: %llu\n",
+                        task->tgid, task->pid, task->utime/100/1000);
     }
 
-    // Adjust length to copy based on buffer_len and remaining data
-    
     if (copy_to_user(ubuf, buf, procfs_buffer_size)) {
         return -EFAULT;
     }
 
-    // Update offset
     *offset += procfs_buffer_size;
 
     return procfs_buffer_size;
