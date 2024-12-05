@@ -1,0 +1,1 @@
+savedcmd_/home/vboxuser/Documents/Lab3/NCKU2024_OS/Lab3/3/3_1/My_Kernel.ko := ld -r -m elf_x86_64 -z noexecstack --build-id=sha1  -T scripts/module.lds -o /home/vboxuser/Documents/Lab3/NCKU2024_OS/Lab3/3/3_1/My_Kernel.ko /home/vboxuser/Documents/Lab3/NCKU2024_OS/Lab3/3/3_1/My_Kernel.o /home/vboxuser/Documents/Lab3/NCKU2024_OS/Lab3/3/3_1/My_Kernel.mod.o
