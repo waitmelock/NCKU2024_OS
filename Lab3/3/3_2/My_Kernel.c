@@ -12,6 +12,8 @@ static unsigned long procfs_buffer_size = 0;
 
 static ssize_t Mywrite(struct file *fileptr, const char __user *ubuf, size_t buffer_len, loff_t *offset){
     /*Your code here*/
+    struct task_struct *task = current;
+
     procfs_buffer_size = min(buffer_len,BUFSIZE);
     if (buffer_len > BUFSIZE) {
         pr_info("Buffer size is too large\n");
@@ -21,6 +23,8 @@ static ssize_t Mywrite(struct file *fileptr, const char __user *ubuf, size_t buf
     if (copy_from_user(buf, ubuf, procfs_buffer_size)) {
         return -EFAULT;
     }
+    procfs_buffer_size+=snprintf(buf + procfs_buffer_size, sizeof(buf) - procfs_buffer_size, "PID: %d, TID: %d, time: %llu\n",
+                current->tgid, current->pid, current->utime/100/1000);
 
     *offset += procfs_buffer_size ;
     pr_info("Data written to proc file: %s\n", buf);
@@ -32,24 +36,16 @@ static ssize_t Mywrite(struct file *fileptr, const char __user *ubuf, size_t buf
 
 static ssize_t Myread(struct file *fileptr, char __user *ubuf, size_t buffer_len, loff_t *offset){
     /*Your code here*/
-    struct task_struct *task = current;
-    struct task_struct *thread;
-
-    procfs_buffer_size=min(procfs_buffer_size,buffer_len);
-    if (*offset) {
+    if(*offset>0){
         return 0;
     }
-    else{
-        procfs_buffer_size += snprintf(buf + procfs_buffer_size, sizeof(buf) - procfs_buffer_size, "PID: %d, TID: %d, time: %llu\n",
-                        task->tgid, task->pid, task->utime/100/1000);
-    }
+    procfs_buffer_size=min(procfs_buffer_size,BUFSIZE);
 
     if (copy_to_user(ubuf, buf, procfs_buffer_size)) {
         return -EFAULT;
     }
 
-    *offset += procfs_buffer_size;
-
+     *offset += procfs_buffer_size ;
     return procfs_buffer_size;
     /****************/
 }
