@@ -284,10 +284,6 @@ static int osfs_create(struct mnt_idmap *idmap, struct inode *dir, struct dentry
         iput(inode);
         return -EIO;
     }
-    // else{
-    //     pr_info("osfs_get_osfs_inode: Getting inode %lu\n", inode->i_ino);
-
-    // }
     // init osfs_inode attribute
     osfs_inode->i_block = 0; 
     osfs_inode->i_size = 0;
