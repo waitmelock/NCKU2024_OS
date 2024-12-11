@@ -2,7 +2,51 @@
 #include <linux/string.h>
 #include <linux/slab.h>
 #include "osfs.h"
+#include <linux/uaccess.h>
 
+
+int osfs_read_from_extents(struct osfs_sb_info *sb_info, struct osfs_inode *osfs_inode, void *buffer, size_t size)
+{
+    size_t bytes_read = 0;
+    size_t offset = 0;
+    int i;
+
+    for (i = 0; i < osfs_inode->i_extents_count && bytes_read < size; i++) {
+        struct osfs_extent *extent = &osfs_inode->i_extents[i];
+        size_t extent_start = extent->start_block * BLOCK_SIZE;
+        size_t extent_size = extent->block_count * BLOCK_SIZE;
+        size_t bytes_to_read = min(extent_size - offset, size - bytes_read);
+
+        void *extent_data = sb_info->data_blocks + extent_start + offset;
+        memcpy(buffer + bytes_read, extent_data, bytes_to_read);
+
+        bytes_read += bytes_to_read;
+        offset = 0;  // Reset offset after the first extent
+    }
+
+    return bytes_read == size ? 0 : -EIO;
+}
+int osfs_write_to_extents(struct osfs_sb_info *sb_info, struct osfs_inode *osfs_inode, const void *buffer, size_t size)
+{
+    size_t bytes_written = 0;
+    size_t offset = 0;
+    int i;
+
+    for (i = 0; i < osfs_inode->i_extents_count && bytes_written < size; i++) {
+        struct osfs_extent *extent = &osfs_inode->i_extents[i];
+        size_t extent_start = extent->start_block * BLOCK_SIZE;
+        size_t extent_size = extent->block_count * BLOCK_SIZE;
+        size_t bytes_to_write = min(extent_size - offset, size - bytes_written);
+
+        void *extent_data = sb_info->data_blocks + extent_start + offset;
+        memcpy(extent_data, buffer + bytes_written, bytes_to_write);
+
+        bytes_written += bytes_to_write;
+        offset = 0;  // Reset offset after the first extent
+    }
+
+    return bytes_written == size ? 0 : -EIO;
+}
 /**
  * Function: osfs_lookup
  * Description: Looks up a file within a directory.
@@ -27,8 +71,12 @@ static struct dentry *osfs_lookup(struct inode *dir, struct dentry *dentry, unsi
     pr_info("osfs_lookup: Looking up '%.*s' in inode %lu\n",
             (int)dentry->d_name.len, dentry->d_name.name, dir->i_ino);
 
-    // Read the parent directory's data block
-    dir_data_block = sb_info->data_blocks + parent_inode->i_block * BLOCK_SIZE;
+    // Allocate memory for the directory data
+    void *dir_data_block = kmalloc(parent_inode->i_size, GFP_KERNEL);
+    if (!dir_data_block) {
+        pr_err("osfs_lookup: Failed to allocate memory for directory data\n");
+        return ERR_PTR(-ENOMEM);
+    }
 
     // Calculate the number of directory entries
     dir_entry_count = parent_inode->i_size / sizeof(struct osfs_dir_entry);
@@ -47,7 +95,7 @@ static struct dentry *osfs_lookup(struct inode *dir, struct dentry *dentry, unsi
             return d_splice_alias(inode, dentry);
         }
     }
-
+    kfree(dir_data_block);
     return NULL;
 }
 
@@ -83,16 +131,18 @@ static int osfs_iterate(struct file *filp, struct dir_context *ctx)
     /* Adjust the index based on ctx->pos */
     i = ctx->pos - 2;
 
-    for (; i < dir_entry_count; i++) {
-        struct osfs_dir_entry *entry = &dir_entries[i];
+
+    // Iterate over directory entries
+    while (offset < dir_size) {
+        struct osfs_dir_entry *entry = (struct osfs_dir_entry *)(dir_data_block + offset);
         unsigned int type = DT_UNKNOWN;
 
         if (!dir_emit(ctx, entry->filename, strlen(entry->filename), entry->inode_no, type)) {
             pr_err("osfs_iterate: dir_emit failed for entry '%s'\n", entry->filename);
             return -EINVAL;
         }
-
-        ctx->pos++;
+        offset += sizeof(struct osfs_dir_entry);
+        ctx->pos += sizeof(struct osfs_dir_entry);
     }
 
     return 0;
@@ -139,6 +189,12 @@ struct inode *osfs_new_inode(const struct inode *dir, umode_t mode)
     if (!inode)
         return ERR_PTR(-ENOMEM);
 
+    osfs_inode = kzalloc(sizeof(struct osfs_inode), GFP_KERNEL);
+    if (!osfs_inode) {
+        iput(inode);
+        return ERR_PTR(-ENOMEM);
+    }
+
     /* Initialize inode owner and permissions */
     inode_init_owner(&nop_mnt_idmap, inode, dir, mode);
     inode->i_ino = ino;
@@ -181,7 +237,8 @@ struct inode *osfs_new_inode(const struct inode *dir, umode_t mode)
     osfs_inode->i_blocks = 1; // Simplified handling
     osfs_inode->__i_atime = osfs_inode->__i_mtime = osfs_inode->__i_ctime = current_time(inode);
     inode->i_private = osfs_inode;
-
+    //
+    osfs_inode->i_extents_count = 0;
     /* Allocate data block */
     ret = osfs_alloc_data_block(sb_info, &osfs_inode->i_block);
     if (ret) {
@@ -199,43 +256,39 @@ struct inode *osfs_new_inode(const struct inode *dir, umode_t mode)
     return inode;
 }
 
-static int osfs_add_dir_entry(struct inode *dir, uint32_t inode_no, const char *name, size_t name_len)
+int osfs_add_dir_entry(struct osfs_inode *dir_inode, struct osfs_dir_entry *new_entry)
 {
-    struct osfs_sb_info *sb_info = dir->i_sb->s_fs_info;
-    struct osfs_inode *parent_inode = dir->i_private;
-    void *dir_data_block;
-    struct osfs_dir_entry *dir_entries;
-    int dir_entry_count;
-    int i;
+    struct osfs_sb_info *sb_info = dir_inode->vfs_inode.i_sb->s_fs_info;
+    size_t dir_size = dir_inode->i_size;
+    size_t entry_size = sizeof(struct osfs_dir_entry);
+    void *dir_data;
+    int ret;
 
-    // Read the parent directory's data block
-    dir_data_block = sb_info->data_blocks + parent_inode->i_block * BLOCK_SIZE;
+    // Allocate buffer to hold existing directory data plus the new entry
+    dir_data = kzalloc(dir_size + entry_size, GFP_KERNEL);
+    if (!dir_data)
+        return -ENOMEM;
 
-    // Calculate the existing number of directory entries
-    dir_entry_count = parent_inode->i_size / sizeof(struct osfs_dir_entry);
-    if (dir_entry_count >= MAX_DIR_ENTRIES) {
-        pr_err("osfs_add_dir_entry: Parent directory is full\n");
-        return -ENOSPC;
+    // Read existing directory data from extents
+    ret = osfs_read_from_extents(sb_info, dir_inode, dir_data, dir_size);
+    if (ret < 0) {
+        kfree(dir_data);
+        return ret;
     }
 
-    dir_entries = (struct osfs_dir_entry *)dir_data_block;
+    // Append the new directory entry
+    memcpy(dir_data + dir_size, new_entry, entry_size);
+    dir_size += entry_size;
 
-    // Check if a file with the same name exists
-    for (i = 0; i < dir_entry_count; i++) {
-        if (strlen(dir_entries[i].filename) == name_len &&
-            strncmp(dir_entries[i].filename, name, name_len) == 0) {
-            pr_warn("osfs_add_dir_entry: File '%.*s' already exists\n", (int)name_len, name);
-            return -EEXIST;
-        }
-    }
+    // Write updated directory data back to extents
+    ret = osfs_write_to_extents(sb_info, dir_inode, dir_data, dir_size);
+    kfree(dir_data);
+    if (ret < 0)
+        return ret;
 
-    // Add a new directory entry
-    strncpy(dir_entries[dir_entry_count].filename, name, name_len);
-    dir_entries[dir_entry_count].filename[name_len] = '\0';
-    dir_entries[dir_entry_count].inode_no = inode_no;
-
-    // Update the size of the parent directory
-    parent_inode->i_size += sizeof(struct osfs_dir_entry);
+    // Update inode size
+    dir_inode->i_size = dir_size;
+    mark_inode_dirty(&dir_inode->vfs_inode);
 
     return 0;
 }
@@ -288,9 +341,16 @@ static int osfs_create(struct mnt_idmap *idmap, struct inode *dir, struct dentry
     osfs_inode->i_block = 0; 
     osfs_inode->i_size = 0;
     osfs_inode->i_blocks = 0;
+    osfs_inode->i_extents_count = 0;//
+    memset(osfs_inode->i_extents, 0, sizeof(osfs_inode->i_extents));//
 
     // Step4: Parent directory entry update for the new file
-    ret = osfs_add_dir_entry(dir, inode->i_ino, dentry->d_name.name, dentry->d_name.len);
+    // Add directory entry to parent directory
+    struct osfs_dir_entry new_entry;
+    strncpy(new_entry.filename, dentry->d_name.name, MAX_FILENAME_LEN);
+    new_entry.filename[MAX_FILENAME_LEN - 1] = '\0';
+    new_entry.inode_no = inode->i_ino;
+    ret = osfs_add_dir_entry(dir->i_private, &new_entry);
     if (ret) {
         pr_err("osfs_create: Failed to add directory entry\n");
         iput(inode);
@@ -303,6 +363,7 @@ static int osfs_create(struct mnt_idmap *idmap, struct inode *dir, struct dentry
     
     // Step 6: Bind the inode to the VFS dentry
     d_instantiate(dentry, inode);
+    dget(dentry);//
     pr_info("osfs_create: File '%.*s' created with inode %lu\n",
             (int)dentry->d_name.len, dentry->d_name.name, inode->i_ino);
 

@@ -23,7 +23,9 @@
 #define INODE_BITMAP_SIZE BITMAP_SIZE(INODE_COUNT)
 #define BLOCK_BITMAP_SIZE BITMAP_SIZE(DATA_BLOCK_COUNT)
 
-#define ROOT_INODE 1            // Define the root inode as 1
+#define MAX_EXTENTS 4
+#define ROOT_INODE_NUMBER 1            // Define the root inode as 1
+
 
 /**
  * Struct: osfs_sb_info
@@ -51,6 +53,12 @@ struct osfs_dir_entry {
     uint32_t inode_no;               // Corresponding inode number
 };
 
+// Define the maximum number of extents per inode
+struct osfs_extent {
+    uint32_t start_block;  // Starting block of the extent
+    uint32_t block_count;  // Number of blocks in the extent
+    uint32_t file_offset;
+};
 /**
  * Struct: osfs_inode
  * Description: Filesystem-specific inode structure.
@@ -67,13 +75,16 @@ struct osfs_inode {
     struct timespec64 __i_mtime;        // Last modification time
     struct timespec64 __i_ctime;        // Creation time
     uint32_t i_block;                   // Simplified handling, single data block pointer
+    //
+    uint32_t i_extents_count;
+    struct osfs_extent i_extents[MAX_EXTENTS];
 };
-
 struct inode *osfs_iget(struct super_block *sb, unsigned long ino);
 struct osfs_inode *osfs_get_osfs_inode(struct super_block *sb, uint32_t ino);
 int osfs_get_free_inode(struct osfs_sb_info *sb_info);
 int osfs_alloc_data_block(struct osfs_sb_info *sb_info, uint32_t *block_no);
 int osfs_fill_super(struct super_block *sb, void *data, int silent);
+void osfs_put_super(struct super_block *sb);
 struct inode *osfs_new_inode(const struct inode *dir, umode_t mode);
 void osfs_free_data_block(struct osfs_sb_info *sb_info, uint32_t block_no);
 void osfs_destroy_inode(struct inode *inode);
@@ -84,5 +95,6 @@ extern const struct file_operations osfs_file_operations;
 extern const struct inode_operations osfs_dir_inode_operations;
 extern const struct file_operations osfs_dir_operations;
 extern const struct super_operations osfs_super_ops;
+
 
 #endif /* _osfs_H */

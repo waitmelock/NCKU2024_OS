@@ -11,7 +11,7 @@ const struct super_operations osfs_super_ops = {
     .statfs = simple_statfs,            // Provides filesystem statistics
     .drop_inode = generic_delete_inode, // Generic inode deletion
     .destroy_inode = osfs_destroy_inode,
-
+    .put_super = osfs_put_super
 };
 
 void osfs_destroy_inode(struct inode *inode)
@@ -21,6 +21,55 @@ void osfs_destroy_inode(struct inode *inode)
     }
 }
 
+void osfs_put_super(struct super_block *sb)
+{
+    struct osfs_sb_info *sb_info = sb->s_fs_info;
+
+    if (sb_info) {
+        // Free block bitmap
+        if (sb_info->block_bitmap)
+            kfree(sb_info->block_bitmap);
+        // Free data blocks
+        if (sb_info->data_blocks)
+            kfree(sb_info->data_blocks);
+    
+        // Free superblock info structure
+        kfree(sb_info);
+        sb->s_fs_info = NULL;
+    }
+}
+
+struct inode *osfs_get_root_inode(struct super_block *sb)
+{
+    struct inode *inode;
+    struct osfs_inode *osfs_inode;
+
+    inode = new_inode(sb);
+    if (!inode)
+        return NULL;
+
+    inode->i_ino = ROOT_INODE_NUMBER;
+    inode_init_owner(&nop_mnt_idmap, inode, NULL, S_IFDIR | 0755);
+    inode->i_op = &osfs_dir_inode_operations;
+    inode->i_fop = &osfs_dir_operations;
+    inode->i_sb = sb;
+
+    // Allocate and initialize osfs_inode
+    osfs_inode = kzalloc(sizeof(struct osfs_inode), GFP_KERNEL);
+    if (!osfs_inode) {
+        iput(inode);
+        return NULL;
+    }
+
+    // Initialize osfs_inode fields
+    osfs_inode->i_size = 0;
+    osfs_inode->i_extents_count = 0;
+    memset(osfs_inode->i_extents, 0, sizeof(osfs_inode->i_extents));
+
+    inode->i_private = osfs_inode;
+
+    return inode;
+}
 
 /**
  * Function: osfs_fill_super
@@ -35,94 +84,55 @@ void osfs_destroy_inode(struct inode *inode)
  */
 int osfs_fill_super(struct super_block *sb, void *data, int silent)
 {
-    pr_info("osfs: Filling super start\n");
-    struct inode *root_inode;
     struct osfs_sb_info *sb_info;
-    void *memory_region;
-    size_t total_memory_size;
+    struct inode *root_inode;
+    int ret;
 
-    // Calculate total memory size required
-    total_memory_size = sizeof(struct osfs_sb_info) +
-                        INODE_BITMAP_SIZE * sizeof(unsigned long) +
-                        BLOCK_BITMAP_SIZE * sizeof(unsigned long) +
-                        INODE_COUNT * sizeof(struct osfs_inode) +
-                        DATA_BLOCK_COUNT * BLOCK_SIZE;
-
-    // Allocate memory for superblock information and related structures
-    memory_region = vmalloc(total_memory_size);
-    if (!memory_region)
+    // Allocate memory for the superblock info
+    sb_info = kzalloc(sizeof(struct osfs_sb_info), GFP_KERNEL);
+    if (!sb_info)
         return -ENOMEM;
 
-    memset(memory_region, 0, total_memory_size);
-
-    // Initialize superblock information
-    sb_info = (struct osfs_sb_info *)memory_region;
-    sb_info->magic = OSFS_MAGIC;
-    sb_info->block_size = BLOCK_SIZE;
-    sb_info->inode_count = INODE_COUNT;
+    // Initialize total_blocks (set this to the number of data blocks in your filesystem)
     sb_info->block_count = DATA_BLOCK_COUNT;
-    sb_info->nr_free_inodes = INODE_COUNT - 1;
-    sb_info->nr_free_blocks = DATA_BLOCK_COUNT;
 
-    // Partition the memory region into respective components
-    sb_info->inode_bitmap = (unsigned long *)(sb_info + 1);
-    sb_info->block_bitmap = sb_info->inode_bitmap + INODE_BITMAP_SIZE;
-    sb_info->inode_table = (void *)(sb_info->block_bitmap + BLOCK_BITMAP_SIZE);
-    sb_info->data_blocks = (void *)((char *)sb_info->inode_table +
-                                    INODE_COUNT * sizeof(struct osfs_inode));
+    // Allocate and initialize the block bitmap
+    sb_info->block_bitmap = kzalloc(BITS_TO_LONGS(sb_info->block_count) * sizeof(long), GFP_KERNEL);
+    if (!sb_info->block_bitmap) {
+        kfree(sb_info);
+        return -ENOMEM;
+    }
 
-    // Initialize bitmaps
-    memset(sb_info->inode_bitmap, 0, INODE_BITMAP_SIZE * sizeof(unsigned long));
-    memset(sb_info->block_bitmap, 0, BLOCK_BITMAP_SIZE * sizeof(unsigned long));
 
-    // Set superblock fields
-    sb->s_magic = sb_info->magic;
+    // Initialize data_blocks (pointer to the start of data block region)
+    sb_info->data_blocks = kzalloc(sb_info->block_count * BLOCK_SIZE, GFP_KERNEL);
+    // Assign sb_info to the superblock's s_fs_info
     sb->s_fs_info = sb_info;
+
+    // Set superblock operations
     sb->s_op = &osfs_super_ops;
 
-    // Create root directory inode
-    root_inode = new_inode(sb);
+    // Create and initialize the root inode
+    root_inode = osfs_get_root_inode(sb);
     if (!root_inode) {
-        vfree(memory_region);
-        return -ENOMEM;
+        pr_err("osfs_fill_super: Failed to create root inode\n");
+        ret = -ENOMEM;
+        goto cleanup;
     }
 
-    root_inode->i_ino = ROOT_INODE;
-    root_inode->i_sb = sb;
-    root_inode->i_op = &osfs_dir_inode_operations;
-    root_inode->i_fop = &osfs_dir_operations;
-    root_inode->i_mode = S_IFDIR | 0755;
-    set_nlink(root_inode, 2);
-    simple_inode_init_ts(root_inode);
-    
-    // Initialize root directory's osfs_inode
-    struct osfs_inode *root_osfs_inode = osfs_get_osfs_inode(sb, ROOT_INODE);
-    if (!root_osfs_inode) {
-        iput(root_inode);
-        vfree(memory_region);
-        return -EIO;
-    }
-    memset(root_osfs_inode, 0, sizeof(*root_osfs_inode));
-
-    root_osfs_inode->i_ino = ROOT_INODE;
-    root_osfs_inode->i_mode = root_inode->i_mode;
-    root_osfs_inode->i_links_count = 2;
-    root_osfs_inode->__i_atime = root_osfs_inode->__i_mtime = root_osfs_inode->__i_ctime = current_time(root_inode);
-    root_inode->i_private = root_osfs_inode;
-
-    // Mark root directory inode as used
-    set_bit(ROOT_INODE, sb_info->inode_bitmap);
-
-    // Update root directory size
-    root_inode->i_size = 0;
-    inode_init_owner(&nop_mnt_idmap, root_inode, NULL, root_inode->i_mode);
-    // Set the root directory
+    // Set up the root directory
     sb->s_root = d_make_root(root_inode);
     if (!sb->s_root) {
-        iput(root_inode);
-        vfree(memory_region);
-        return -ENOMEM;
+        pr_err("osfs_fill_super: Failed to create root dentry\n");
+        ret = -ENOMEM;
+        goto cleanup;
     }
-    pr_info("osfs: Superblock filled successfully with root inode %lu\n",root_inode->i_ino);//print
+
     return 0;
+
+cleanup:
+    // Free allocated resources on failure
+    kfree(sb_info->block_bitmap);
+    kfree(sb_info);
+    return ret;
 }

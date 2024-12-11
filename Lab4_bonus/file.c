@@ -2,6 +2,26 @@
 #include <linux/uaccess.h>
 #include "osfs.h"
 
+
+int osfs_block_map(struct osfs_inode *osfs_inode, loff_t offset, uint32_t *block_num)
+{
+    size_t cumulative_size = 0;
+    int i;
+
+    for (i = 0; i < osfs_inode->i_extents_count; i++) {
+        struct osfs_extent *extent = &osfs_inode->i_extents[i];
+        size_t extent_size = extent->block_count * BLOCK_SIZE;
+
+        if (offset < cumulative_size + extent_size) {
+            *block_num = extent->start_block + (offset - cumulative_size) / BLOCK_SIZE;
+            return 0;
+        }
+
+        cumulative_size += extent_size;
+    }
+
+    return -ENODATA;
+}
 /**
  * Function: osfs_read
  * Description: Reads data from a file.
@@ -20,26 +40,37 @@ static ssize_t osfs_read(struct file *filp, char __user *buf, size_t len, loff_t
     struct inode *inode = file_inode(filp);
     struct osfs_inode *osfs_inode = inode->i_private;
     struct osfs_sb_info *sb_info = inode->i_sb->s_fs_info;
-    void *data_block;
-    ssize_t bytes_read;
+    ssize_t bytes_read = 0;
+    size_t offset = *ppos;
+    int i;
 
-    // If the file has not been allocated a data block, it indicates the file is empty
-    if (osfs_inode->i_blocks == 0)
+    if (offset >= osfs_inode->i_size)
         return 0;
 
-    if (*ppos >= osfs_inode->i_size)
-        return 0;
+    if (offset + len > osfs_inode->i_size)
+        len = osfs_inode->i_size - offset;
 
-    if (*ppos + len > osfs_inode->i_size)
-        len = osfs_inode->i_size - *ppos;
+    for (i = 0; i < osfs_inode->i_extents_count && bytes_read < len; i++) {
+        struct osfs_extent *extent = &osfs_inode->i_extents[i];
+        size_t extent_start = extent->start_block * BLOCK_SIZE;
+        size_t extent_size = extent->block_count * BLOCK_SIZE;
 
-    data_block = sb_info->data_blocks + osfs_inode->i_blocks * BLOCK_SIZE + *ppos;
-    if (copy_to_user(buf, data_block, len))
-        return -EFAULT;
+        if (offset >= extent_size) {
+            offset -= extent_size;
+            continue;
+        }
 
-    *ppos += len;
-    bytes_read = len;
+        size_t bytes_to_read = min(len - bytes_read, extent_size - offset);
+        void *extent_data = sb_info->data_blocks + extent_start + offset;
 
+        if (copy_to_user(buf + bytes_read, extent_data, bytes_to_read))
+            return -EFAULT;
+
+        bytes_read += bytes_to_read;
+        offset = 0;  // Reset offset after first extent
+    }
+
+    *ppos += bytes_read;
     return bytes_read;
 }
 
@@ -58,51 +89,59 @@ static ssize_t osfs_read(struct file *filp, char __user *buf, size_t len, loff_t
  *   - Adjusted length if the write exceeds the block size.
  */
 static ssize_t osfs_write(struct file *filp, const char __user *buf, size_t len, loff_t *ppos)
-{   
-    //Step1: Retrieve the inode and filesystem information
+{
     struct inode *inode = file_inode(filp);
     struct osfs_inode *osfs_inode = inode->i_private;
     struct osfs_sb_info *sb_info = inode->i_sb->s_fs_info;
-    void *data_block;
-    ssize_t bytes_written;
-    int ret;
+    ssize_t bytes_written = 0;
+    size_t offset = *ppos;
+    int  i;
 
-    // Step2: Check if a data block has been allocated; if not, allocate one
-    if (osfs_inode->i_blocks == 0) {
-        ret = osfs_alloc_data_block(sb_info, &osfs_inode->i_block);
-        if (ret) {
-            pr_err("osfs_write: Failed to allocate data block\n");
-            return ret;
+    // Allocate new extent if needed
+    if (osfs_inode->i_extents_count == 0 || offset >= osfs_inode->i_size) {
+        if (osfs_inode->i_extents_count >= MAX_EXTENTS)
+            return -ENOSPC;
+
+        struct osfs_extent *new_extent = &osfs_inode->i_extents[osfs_inode->i_extents_count];
+        uint32_t blocks_needed = DIV_ROUND_UP(len, BLOCK_SIZE);
+
+
+        osfs_inode->i_extents_count++;
+        osfs_inode->i_size += blocks_needed * BLOCK_SIZE;
+        mark_inode_dirty(inode);
+    }
+
+    for (i = 0; i < osfs_inode->i_extents_count && bytes_written < len; i++) {
+        struct osfs_extent *extent = &osfs_inode->i_extents[i];
+        size_t extent_start = extent->start_block * BLOCK_SIZE;
+        size_t extent_size = extent->block_count * BLOCK_SIZE;
+
+        if (offset >= extent_size) {
+            offset -= extent_size;
+            continue;
         }
-        osfs_inode->i_blocks = 1;
+
+        size_t bytes_to_write = min(len - bytes_written, extent_size - offset);
+        void *extent_data = sb_info->data_blocks + extent_start + offset;
+
+        if (copy_from_user(extent_data, buf + bytes_written, bytes_to_write))
+            return -EFAULT;
+
+        bytes_written += bytes_to_write;
+        offset = 0;  // Reset offset after first extent
     }
 
-    // Step3: Limit the write length to fit within one data block
-    if (*ppos + len > BLOCK_SIZE) {
-        len = BLOCK_SIZE - *ppos;
-        pr_warn("osfs_write: Adjusting write length to %zu\n", len);
-    }
+    *ppos += bytes_written;
 
-    // Step4: Write data from user space to the data block
-    data_block = sb_info->data_blocks + osfs_inode->i_block * BLOCK_SIZE + *ppos;
-    if (copy_from_user(data_block, buf, len)){
-        pr_err("osfs_write: Failed to copy data from user space\n");
-        return -EFAULT;
-    }
-
-    // Step5: Update inode & osfs_inode attribute
-    bytes_written = len;
-    *ppos+=len;
-
-    if (*ppos > osfs_inode->i_size){
+    // Update inode metadata
+    if (*ppos > osfs_inode->i_size) {
         osfs_inode->i_size = *ppos;
         inode->i_size = *ppos;
     }
-    inode->__i_mtime = current_time(inode);
-    inode->__i_ctime = current_time(inode);
+
+    inode->__i_mtime = inode->__i_ctime = current_time(inode);
     mark_inode_dirty(inode);
 
-    // Step6: Return the number of bytes written
     return bytes_written;
 }
 
