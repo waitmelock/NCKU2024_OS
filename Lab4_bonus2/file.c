@@ -101,6 +101,9 @@ static ssize_t osfs_write(struct file *filp, const char __user *buf, size_t len,
     bytes_written = len;
     *ppos+=len;
 
+    idx = *ppos / (MAX_CON_BLOCKS*BLOCK_SIZE);
+    offset =*ppos % (MAX_CON_BLOCKS*BLOCK_SIZE);
+
     if (*ppos > osfs_inode->i_size){
         osfs_inode->extent[idx].file_offset=offset;
         osfs_inode->i_size = *ppos;

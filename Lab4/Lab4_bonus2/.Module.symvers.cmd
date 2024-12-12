@@ -1,1 +1,0 @@
-savedcmd_/home/vboxuser/Documents/Lab3/NCKU2024_OS/Lab4/Module.symvers :=  scripts/mod/modpost -M -m -a      -o /home/vboxuser/Documents/Lab3/NCKU2024_OS/Lab4/Module.symvers -T /home/vboxuser/Documents/Lab3/NCKU2024_OS/Lab4/modules.order -i Module.symvers -e 

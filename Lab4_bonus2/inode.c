@@ -65,7 +65,7 @@ struct inode *osfs_iget(struct super_block *sb, unsigned long ino)
     if (!osfs_inode)
         return ERR_PTR(-EFAULT);
 
-    inode = new_inode(sb);
+    inode = new_inode(sb);  //in VFS
     if (!inode)
         return ERR_PTR(-ENOMEM);
 
@@ -79,8 +79,8 @@ struct inode *osfs_iget(struct super_block *sb, unsigned long ino)
     inode->__i_ctime = osfs_inode->__i_ctime;
     inode->i_size = osfs_inode->i_size;
     // inode->i_blocks = osfs_inode->i_blocks;
-    for(int i=0;i<MAX_EXTENT;i++){
-        inode->i_blocks += osfs_inode->extent[i].block_count;//
+    for(int i=0;i<MAX_EXTENT;i++){ //number of blocks
+        inode->i_blocks += osfs_inode->extent[i].block_count;// question
     }
     inode->i_private = osfs_inode;
     if (S_ISDIR(inode->i_mode)) {
@@ -116,7 +116,7 @@ int osfs_alloc_data_block(struct osfs_sb_info *sb_info, uint32_t *block_no)
             for (int j = i; j < i+MAX_CON_BLOCKS; j++) {
                 set_bit(j, sb_info->block_bitmap);
             }
-            sb_info->nr_free_blocks-=MAX_CON_BLOCKS;
+            sb_info->nr_free_blocks-=MAX_CON_BLOCKS;//question
             *block_no = i;
             return 0;
         }
