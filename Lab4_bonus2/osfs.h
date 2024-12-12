@@ -24,8 +24,8 @@
 #define BLOCK_BITMAP_SIZE BITMAP_SIZE(DATA_BLOCK_COUNT)
 
 #define ROOT_INODE 1            // Define the root inode as 1
-#define MAX_EXTENT 100
-#define MAX_CON_BLOCKS 100          
+#define MAX_EXTENT 4
+#define MAX_CON_BLOCKS 5         
 /**
  * Struct: osfs_sb_info
  * Description: Superblock information for the osfs filesystem.

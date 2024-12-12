@@ -152,7 +152,7 @@ struct inode *osfs_new_inode(const struct inode *dir, umode_t mode)
     inode_init_owner(&nop_mnt_idmap, inode, dir, mode);
     inode->i_ino = ino;
     inode->i_sb = sb;
-    inode->i_blocks = 0;
+    // inode->i_blocks = 0;
     simple_inode_init_ts(inode);
 
     /* Set inode operations based on file type */
@@ -187,12 +187,13 @@ struct inode *osfs_new_inode(const struct inode *dir, umode_t mode)
     osfs_inode->i_uid = i_uid_read(inode);
     osfs_inode->i_gid = i_gid_read(inode);
     osfs_inode->i_size = inode->i_size;
-    // osfs_inode->i_blocks = 1; // Simplified handling
+    osfs_inode->extent_count=1; // Simplified handling
     osfs_inode->__i_atime = osfs_inode->__i_mtime = osfs_inode->__i_ctime = current_time(inode);
     inode->i_private = osfs_inode;
 
     /* Allocate data block */
     ret = osfs_alloc_data_block(sb_info, &osfs_inode->extent[0].start_block);
+    osfs_inode->extent[0].block_count = MAX_CON_BLOCKS;//
     if (ret) {
         pr_err("osfs_new_inode: Failed to allocate data block\n");
         iput(inode);
@@ -215,7 +216,6 @@ static int osfs_add_dir_entry(struct inode *dir, uint32_t inode_no, const char *
     void *dir_data_block;
     struct osfs_dir_entry *dir_entries;
     int dir_entry_count;
-    int i;
     int idx=0;
 
     for(;idx<MAX_EXTENT;idx++){
@@ -234,7 +234,7 @@ static int osfs_add_dir_entry(struct inode *dir, uint32_t inode_no, const char *
     dir_entries = (struct osfs_dir_entry *)dir_data_block;
 
     // Check if a file with the same name exists
-    for (i = 0; i < dir_entry_count; i++) {
+    for (int i = 0; i < dir_entry_count; i++) {
         if (strlen(dir_entries[i].filename) == name_len &&
             strncmp(dir_entries[i].filename, name, name_len) == 0) {
             pr_warn("osfs_add_dir_entry: File '%.*s' already exists\n", (int)name_len, name);
@@ -313,6 +313,7 @@ static int osfs_create(struct mnt_idmap *idmap, struct inode *dir, struct dentry
     }
 
     // Step 5: Update the parent directory's metadata 
+    parent_inode->__i_mtime = parent_inode->__i_ctime = current_time(dir);
     dir->__i_mtime = dir->__i_ctime = current_time(dir);
     mark_inode_dirty(dir);
     

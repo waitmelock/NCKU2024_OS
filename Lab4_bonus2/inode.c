@@ -79,10 +79,10 @@ struct inode *osfs_iget(struct super_block *sb, unsigned long ino)
     inode->__i_ctime = osfs_inode->__i_ctime;
     inode->i_size = osfs_inode->i_size;
     // inode->i_blocks = osfs_inode->i_blocks;
-    inode->i_private = osfs_inode;
     for(int i=0;i<MAX_EXTENT;i++){
-        inode->i_blocks += osfs_inode->extent[i].start_block;
+        inode->i_blocks += osfs_inode->extent[i].block_count;//
     }
+    inode->i_private = osfs_inode;
     if (S_ISDIR(inode->i_mode)) {
         inode->i_op = &osfs_dir_inode_operations;
         inode->i_fop = &osfs_dir_operations;
@@ -110,11 +110,13 @@ struct inode *osfs_iget(struct super_block *sb, unsigned long ino)
 int osfs_alloc_data_block(struct osfs_sb_info *sb_info, uint32_t *block_no)
 {
     uint32_t i;
-
-    for (i = 0; i < sb_info->block_count; i++) {
+    // Find the first free block?
+    for (i = 0; i < sb_info->block_count; i+=MAX_CON_BLOCKS) {
         if (!test_bit(i, sb_info->block_bitmap)) {
-            set_bit(i, sb_info->block_bitmap);
-            sb_info->nr_free_blocks--;
+            for (int j = i; j < i+MAX_CON_BLOCKS; j++) {
+                set_bit(j, sb_info->block_bitmap);
+            }
+            sb_info->nr_free_blocks-=MAX_CON_BLOCKS;
             *block_no = i;
             return 0;
         }
@@ -125,6 +127,8 @@ int osfs_alloc_data_block(struct osfs_sb_info *sb_info, uint32_t *block_no)
 
 void osfs_free_data_block(struct osfs_sb_info *sb_info, uint32_t block_no)
 {
-    clear_bit(block_no, sb_info->block_bitmap);
-    sb_info->nr_free_blocks++;
+    for(int i=0;i<MAX_CON_BLOCKS;i++){
+        clear_bit(block_no+i, sb_info->block_bitmap);
+    }
+    sb_info->nr_free_blocks+=MAX_CON_BLOCKS;
 }

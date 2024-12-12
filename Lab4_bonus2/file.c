@@ -36,7 +36,7 @@ static ssize_t osfs_read(struct file *filp, char __user *buf, size_t len, loff_t
     loff_t idx = *ppos / (MAX_CON_BLOCKS*BLOCK_SIZE);
     loff_t offset =*ppos % (MAX_CON_BLOCKS*BLOCK_SIZE);
 
-    data_block = sb_info->data_blocks + osfs_inode->extent[idx].block_count * BLOCK_SIZE + *ppos;
+    data_block = sb_info->data_blocks + osfs_inode->extent[idx].start_block * BLOCK_SIZE + offset;
     if (copy_to_user(buf, data_block, len))
         return -EFAULT;
 
@@ -80,18 +80,18 @@ static ssize_t osfs_write(struct file *filp, const char __user *buf, size_t len,
             return ret;
         }
         osfs_inode->extent[idx].block_count =MAX_CON_BLOCKS;
-        osfs_inode->extent_count += 1;
+        osfs_inode->extent_count ++;
     }
 
     // Step3: Limit the write length to fit within one data block
-    if (*ppos  > BLOCK_SIZE*MAX_CON_BLOCKS*MAX_EXTENT){return 0;}
+    if (*ppos  >=BLOCK_SIZE*MAX_CON_BLOCKS*MAX_EXTENT){return 0;}
     if (*ppos + len > BLOCK_SIZE*MAX_CON_BLOCKS*MAX_EXTENT) {
         len = BLOCK_SIZE*MAX_CON_BLOCKS*MAX_EXTENT - *ppos;
         pr_warn("osfs_write: Adjusting write length to %zu\n", len);
     }
 
     // Step4: Write data from user space to the data block
-    data_block = sb_info->data_blocks + osfs_inode->extent[idx].start_block * BLOCK_SIZE + *ppos;
+    data_block = sb_info->data_blocks + osfs_inode->extent[idx].start_block * BLOCK_SIZE + offset;
     if (copy_from_user(data_block, buf, len)){
         pr_err("osfs_write: Failed to copy data from user space\n");
         return -EFAULT;
@@ -102,6 +102,7 @@ static ssize_t osfs_write(struct file *filp, const char __user *buf, size_t len,
     *ppos+=len;
 
     if (*ppos > osfs_inode->i_size){
+        osfs_inode->extent[idx].file_offset=offset;
         osfs_inode->i_size = *ppos;
         inode->i_size = *ppos;
     }

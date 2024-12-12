@@ -1,0 +1,1 @@
+savedcmd_/home/vboxuser/Documents/Lab3/NCKU2024_OS/Lab4_bonus2/osfs.o := ld -m elf_x86_64 -z noexecstack   -r -o /home/vboxuser/Documents/Lab3/NCKU2024_OS/Lab4_bonus2/osfs.o @/home/vboxuser/Documents/Lab3/NCKU2024_OS/Lab4_bonus2/osfs.mod 
