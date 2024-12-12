@@ -216,32 +216,54 @@ static int osfs_add_dir_entry(struct inode *dir, uint32_t inode_no, const char *
     void *dir_data_block;
     struct osfs_dir_entry *dir_entries;
     int dir_entry_count;
-    int idx=0;
+    int idx=parent_inode->extent_count-1;
 
-    for(;idx<MAX_EXTENT;idx++){
+    for(int check_idx=0;check_idx< parent_inode->extent_count;check_idx++){
         // Read the parent directory's data block
-        dir_data_block = sb_info->data_blocks + parent_inode->extent[idx].start_block * BLOCK_SIZE;
+        dir_data_block = sb_info->data_blocks + parent_inode->extent[check_idx].start_block * BLOCK_SIZE;
         // Calculate the existing number of directory entries
-        dir_entry_count = parent_inode->extent[idx].file_offset / sizeof(struct osfs_dir_entry);
+        dir_entry_count = parent_inode->extent[check_idx].file_offset / sizeof(struct osfs_dir_entry);
+        dir_entries = (struct osfs_dir_entry *)dir_data_block;
+
+        // Check if a file with the same name exists
+        for (int i = 0; i < dir_entry_count; i++) {
+            if (strlen(dir_entries[i].filename) == name_len &&
+                strncmp(dir_entries[i].filename, name, name_len) == 0) {
+                pr_warn("osfs_add_dir_entry: File '%.*s' already exists\n", (int)name_len, name);
+                return -EEXIST;
+            }
+        }
     }
     
     
-    if (dir_entry_count >= MAX_DIR_ENTRIES) {
-        pr_err("osfs_add_dir_entry: Parent directory is full\n");
-        return -ENOSPC;
-    }
-
-    dir_entries = (struct osfs_dir_entry *)dir_data_block;
-
-    // Check if a file with the same name exists
-    for (int i = 0; i < dir_entry_count; i++) {
-        if (strlen(dir_entries[i].filename) == name_len &&
-            strncmp(dir_entries[i].filename, name, name_len) == 0) {
-            pr_warn("osfs_add_dir_entry: File '%.*s' already exists\n", (int)name_len, name);
-            return -EEXIST;
+      // Calculate the existing number of directory entries
+    dir_entry_count = parent_inode->extent[idx].file_offset / sizeof(struct osfs_dir_entry);
+    if(dir_entry_count >= (MAX_CON_BLOCKS * MAX_DIR_ENTRIES))
+    {
+        idx++;
+        if (idx >= MAX_EXTENT) {
+          pr_err("osfs_add_dir_entry: Parent directory is full\n");
+          return -ENOSPC;
+        }
+        else
+        {
+            dir_entry_count = parent_inode->extent[idx].file_offset / sizeof(struct osfs_dir_entry);
+            int ret = osfs_alloc_data_block(sb_info, &parent_inode->extent[idx].start_block);
+            parent_inode->extent[idx].block_count = MAX_CON_BLOCKS;
+            if (ret) {
+                pr_err("osfs_new_inode: Failed to allocate data block\n");
+                iput(dir);
+                return ERR_PTR(ret);
+            }
+            parent_inode->extent_count++;
         }
     }
 
+    // Read the parent directory's data block
+    dir_data_block = sb_info->data_blocks + parent_inode->extent[idx].start_block * BLOCK_SIZE;
+    // Calculate the existing number of directory entries
+    dir_entry_count = parent_inode->extent[idx].file_offset / sizeof(struct osfs_dir_entry);
+ 
     // Add a new directory entry
     strncpy(dir_entries[dir_entry_count].filename, name, name_len);
     dir_entries[dir_entry_count].filename[name_len] = '\0';

@@ -108,8 +108,9 @@ int osfs_fill_super(struct super_block *sb, void *data, int silent)
     root_osfs_inode->i_mode = root_inode->i_mode;
     root_osfs_inode->i_links_count = 2;
     root_osfs_inode->extent_count = 1;
+    osfs_alloc_data_block(sb_info, &root_osfs_inode->extent[0].start_block);
     root_osfs_inode->extent[0].start_block = 0;
-    root_osfs_inode->extent[0].block_count = 1;
+    root_osfs_inode->extent[0].block_count = MAX_CON_BLOCKS;
     root_osfs_inode->__i_atime = root_osfs_inode->__i_mtime = root_osfs_inode->__i_ctime = current_time(root_inode);
     root_inode->i_private = root_osfs_inode;
 
